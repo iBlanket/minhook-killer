@@ -1,15 +1,18 @@
 # minhook-killer
 Proof of concept demonstrating how heap entry enumeration & simple checks can be used to to locate, modify, and otherwise fiddle with hooks made by the minhook hooking library.
 
+[![Video of use in cs:go, disabling cheat software]()](https://youtu.be/LmpUdaBVH9s)
+
 ## Background
 Awhile ago while reading the source code for minhook I realized it would be fairly easy to heuristically find the HOOK_ENTRY memory buffer and enumerate the data stored. The concept is very simple, since we know minhook creates a heap and allocates an array of HOOK_ENTRY(s) we can use checks ( verifying/checking entries stored ) to determine if a given heap entry is minhook's HOOK_ENTRY buffer.
 
 ## Disclaimer
-Please do not critisize my code, I will cry. Yes, theres very clear better ways of doing this. To implementing safer, better, more efficient code i say, too much effort + dont care. You could easily check that the hook calls the detour calls the blah blah blah along with a bunch of other checks... it would just take fucking forever to write and not be remotely worth it. This worked for my use case, if it doesnt work for yours dont tell me as it will make me self conscious and sad.
+### This code is made to prove a concept and work as a barebones example. This code is extremely unsafe, not well tested, and prone to issues. Access violations, memory leaks, and pointer corruption are all issues which can occur. DO NOT USE THIS IN ANY IMPORTANT PROJECT, DO NOT USE THIS IF YOU DONT UNDERSTAND THE CODE.
+ Please do not critisize my code, I will cry. Yes, theres very clear better ways of doing this. To implementing safer, better, more efficient code i say, too much effort + dont care. You could easily check that the hook calls the detour calls the blah blah blah along with a bunch of other checks... it would just take fucking forever to write and not be remotely worth it. This worked for my use case, if it doesnt work for yours dont tell me as it will make me self conscious and sad.
 
 ## ~ Step 1 | 📏 Check Heap Entry Size
 
-The following is the minhook function AddHookEntry which adds new hooks to the list of created hooks.
+> The following is the minhook function AddHookEntry which adds new hooks to the list of created hooks.
 ```c
 /* minhook add hook entry to list function ( called upon hook creation ) */
 static PHOOK_ENTRY AddHookEntry() {
@@ -34,7 +37,7 @@ static PHOOK_ENTRY AddHookEntry() {
     return &g_hooks.pItems[g_hooks.size++];
 }
 ```
-Since the size of the HOOK_ENTRY buffer will always be a multiple of sizeof(HOOK_ENTRY), an initial check based on the size is done.
+> Since the size of the HOOK_ENTRY buffer will always be a multiple of sizeof(HOOK_ENTRY), an initial check based on the size is done.
 ```c
 /* BOOL DetectMinhook(fnHookDetectedCallback pCallback) */
     if (dwEntryBufferSize % sizeof(MHENTRY) != 0) // ensure size is a multiple of sizeof(MHENTRY)
@@ -44,7 +47,7 @@ Since the size of the HOOK_ENTRY buffer will always be a multiple of sizeof(HOOK
 ```
 
 ## ~ Step 2 | ☝️ Check Stored Pointers
-In MH_CreateHook we can see 2 checks for IsExecutableAddress, done to prevent writing hooks where hooks shouldnt be written.
+> In MH_CreateHook we can see 2 checks for IsExecutableAddress, done to prevent writing hooks where hooks shouldnt be written.
 ```c
 
 MH_STATUS WINAPI MH_CreateHook(LPVOID pTarget, LPVOID pDetour, LPVOID *ppOriginal) {
@@ -59,7 +62,8 @@ MH_STATUS WINAPI MH_CreateHook(LPVOID pTarget, LPVOID pDetour, LPVOID *ppOrigina
         // ...
 
 ```
-We use these same checks on the members of HOOK_ENTRY ( shown below ) to see if the data in our heap entry matches what would be seen in a valid HOOK_ENTRY buffer/list.
+
+> We use these same checks on the members of HOOK_ENTRY ( shown below ) to see if the data in our heap entry matches what would be seen in a valid HOOK_ENTRY buffer/list. 
 ```c
 typedef struct MH_ENTRY_T { // _HOOK_ENTRY
     LPVOID pTarget; // 0x0 - 0x4
@@ -68,7 +72,7 @@ typedef struct MH_ENTRY_T { // _HOOK_ENTRY
     // (and so on ) ...
 } MHENTRY; // HOOK_ENTRY
 ```
-Check the pointers are valid / point to executable mem
+>Check the pointers are valid / point to executable mem
 ```c
 /* CheckHookEntry(MHENTRY* pMem) */
 
@@ -106,8 +110,8 @@ Check the pointers are valid / point to executable mem
 ```
 
 ## ~ Step 3 | 🦘 Compare Trampoline To Backup
-- This is the final check, it is here i recommend modifying my code to ensure the function calls the detour, calls the trampoline, restores execution flow. To avoid all that mess we just do a shit check that will cause less accuracy but is like.. so much smaller and less work.
-- The 'trampoline' virtually always begins with a copy of the first instruction(s) / the prologue from whatever function was hooked ( as space is needed for writing a jump instruction ). Minhook also stores another copy of this in the HOOK_ENTRY structure for restoring the hooked functions to their original state. A comparison of the HOOK_ENTRY->pTrampoline to the HOOK_ENTRY->backup can be used to verify with a high degree of certainty that a given hook entry is valid. Note: after the initial bytes their is generally an instruction to return execution flow to the original ( hooked ) function, this can also be checked for.
+This is the final check, it is here i recommend modifying my code to ensure the function calls the detour, calls the trampoline, restores execution flow. To avoid all that mess we just do a shit check that will cause less accuracy but is like.. so much smaller and less work.
+>The 'trampoline' virtually always begins with a copy of the first instruction(s) / the prologue from whatever function was hooked ( as space is needed for writing a jump instruction ). Minhook also stores another copy of this in the HOOK_ENTRY structure for restoring the hooked functions to their original state. A comparison of the HOOK_ENTRY->pTrampoline to the HOOK_ENTRY->backup can be used to verify with a high degree of certainty that a given hook entry is valid. Note: after the initial bytes their is generally an instruction to return execution flow to the original ( hooked ) function, this can also be checked for.
 
 ```c
 /* BOOL CheckHookEntry(MHENTRY* pMem) */
